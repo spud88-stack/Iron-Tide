@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IRON TIDE — Private Forces Command</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="map"></div>
+
+<header id="topbar"></header>
+<nav id="sidenav">
+  <button data-act="openPanel" data-p="base" title="Mother Base (B)"><span class="ni">⬢</span><span>BASE</span></button>
+  <button data-act="openPanel" data-p="staff" title="Staff Management (S)"><span class="ni">☰</span><span>STAFF</span></button>
+  <button data-act="openPanel" data-p="rnd" title="Research &amp; Development (R)"><span class="ni">⚗</span><span>R&amp;D</span></button>
+  <button data-act="openPanel" data-p="ops" title="Contracts &amp; Operations (O)"><span class="ni">◎</span><span>OPS</span></button>
+  <button data-act="openPanel" data-p="online" title="FOB / Private Forces (F)"><span class="ni">⚑</span><span>FOB</span></button>
+  <button data-act="openPanel" data-p="log" title="Intel Log (L)"><span class="ni">✉</span><span>LOG</span></button>
+  <div class="grow"></div>
+  <button data-act="layerToggle" title="Toggle satellite imagery (M)"><span class="ni">◐</span><span>MAP</span></button>
+  <button data-act="openPanel" data-p="system" title="System"><span class="ni">⚙</span><span>SYS</span></button>
+</nav>
+<section id="panel" class="hidden">
+  <div class="panel-head"><h2 id="panel-title"></h2><button class="x" data-act="closePanel" title="Close (Esc)">✕</button></div>
+  <div id="panel-body"></div>
+</section>
+<div id="opstrip"></div>
+<div id="toasts"></div>
+<div id="battle-hud" class="hidden"></div>
+<div id="map-banner" class="hidden"></div>
+<div id="tooltip" class="hidden"></div>
+<div id="modal-root"></div>
+<div id="start-screen"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="js/util.js"></script>
+<script src="js/data.js"></script>
+<script src="js/art.js"></script>
+<script src="js/state.js"></script>
+<script src="js/staff.js"></script>
+<script src="js/base.js"></script>
+<script src="js/rnd.js"></script>
+<script src="js/pf.js"></script>
+<script src="js/contracts.js"></script>
+<script src="js/battle/terrain.js"></script>
+<script src="js/battle/battle.js"></script>
+<script src="js/battle/ai.js"></script>
+<script src="js/battle/render.js"></script>
+<script src="js/map.js"></script>
+<script src="js/ui/ui.js"></script>
+<script src="js/ui/panels.js"></script>
+<script src="js/ui/deploy.js"></script>
+<script src="js/ui/hud.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
