@@ -71,7 +71,7 @@ const Base = {
         G.base.builds.splice(G.base.builds.indexOf(b), 1);
         G.base.plat[b.k] = b.n;
         Game.log(`${PLATFORM_NAME[b.k]} platform ${b.n} completed.`, 'ok');
-        Game.notify('CONSTRUCTION COMPLETE', `${PLATFORM_NAME[b.k]} platform ${b.n} is operational.`, 'ok');
+        Game.notify('CONSTRUCTION COMPLETE', `${PLATFORM_NAME[b.k]} platform ${b.n} is operational.`, 'ok', [], { sound: 'chime' });
         Staff.recalc();
       }
     }

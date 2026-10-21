@@ -120,6 +120,7 @@ const Contracts = {
     G.deps.push(dep);
     for (const m of squad) Staff.byId(m.sid).status = 'deployed';
     if (kind === 'contract') { const c = Contracts.byId(contractId); c.status = 'taken'; c.depId = dep.id; Terrain.prefetch(c.lat, c.lng); }
+    Sfx.play('deploy');
     Game.log(`${name} departed ${o.name} for ${to.name} (${title}). ETA ${U.fmtDur(travel)}.`, 'info');
     Staff.recalc();
     MapView.refreshStatic();
@@ -138,7 +139,7 @@ const Contracts = {
         if (!b) { Contracts.orphanedDeployment(dep); continue; }
         dep.battleId = b.id;
         Game.notify(`${dep.name.toUpperCase()} ON SITE`, `${dep.title} — ${dep.to.name}. The squad AI will proceed unless you take command.`, 'info',
-          [{ label: 'Take Command', act: 'focusBattle', args: { id: b.id } }], { ttl: 14 });
+          [{ label: 'Take Command', act: 'focusBattle', args: { id: b.id } }], { ttl: 14, sound: 'radio' });
         if (G.settings.focusOnArrival) UI.focusBattle(b.id);
         MapView.refreshStatic();
       } else if (dep.state === 'inbound' && G.time >= dep.returnAt) {

@@ -55,7 +55,7 @@ const Battle = {
     G.battles.push(b);
     Battle.init(b, { platform: { plat } });
     Game.log(`INTRUDERS: ${p.name} operatives have breached ${place}!`, 'bad');
-    Game.notify('FOB INCURSION', `${p.name} intruders at ${place}. Security is responding.`, 'bad', [{ label: 'Take Command', act: 'focusBattle', args: { id: b.id } }], { ttl: 20 });
+    Game.notify('FOB INCURSION', `${p.name} intruders at ${place}. Security is responding.`, 'bad', [{ label: 'Take Command', act: 'focusBattle', args: { id: b.id } }], { ttl: 20, sound: 'siren' });
     if (G.settings.pauseOnInvasion && G.speedIdx > 1) Game.setSpeed(1);
     MapView.refreshStatic();
     return b;
@@ -404,7 +404,7 @@ const Battle = {
   step(b, h) {
     b.time += h;
     // fx decay
-    for (const f of b.fx) f.t += h;
+    for (const f of b.fx) { f.t += h; if (!f.snd && f.t >= 0) { f.snd = true; Battle.fxEvent(b, f); } }
     b.fx = b.fx.filter(f => f.t < (f.life || 0.5));
     // night update
     b.nightT += h; if (b.nightT > 20) { b.nightT = 0; b.night = U.isNight(G.time, b.lng); }
@@ -432,6 +432,7 @@ const Battle = {
     Battle.stepObjectives(b, h);
     Battle.stepAlert(b, h);
     Battle.stepPhase(b, h);
+    Battle.watch(b);
   },
 
   stepUnitTimers(b, u, h) {
@@ -660,13 +661,45 @@ const Battle = {
 
   icon(u, ic) { u.icon = ic; u.iconT = 2.5; },
 
-  caution(b) { if (b.alert < 1) { b.alert = 1; b.alertT = 60; } else if (b.alert === 1) b.alertT = 60; },
+  caution(b) { if (b.alert < 1) { b.alert = 1; b.alertT = 60; Battle.ui(b, 'caution'); } else if (b.alert === 1) b.alertT = 60; },
+
+  // UI-level sound for a battle: full volume when you're commanding it, spatial otherwise
+  ui(b, name) {
+    if (UI.focused === b.id) Sfx.play(name);
+    else Sfx.at(b, b.lz ? b.lz.x : 0, b.lz ? b.lz.y : 0, name, { gain: 0.7 });
+  },
+
+  // one-shot audio/visual side effects when an fx starts playing
+  fxEvent(b, f) {
+    const focused = UI.focused === b.id;
+    if (f.type === 'boom') {
+      Sfx.at(b, f.x, f.y, f.r >= 8 ? 'explosion' : 'smallboom');
+      if (!f.nl) for (let i = 0; i < 3; i++) b.fx.push({ type: 'puff', x: f.x + U.rand(-f.r / 3, f.r / 3), y: f.y + U.rand(-f.r / 3, f.r / 3), r: f.r * U.rand(0.5, 0.9), t: -i * 0.1, life: 3.5, snd: true });
+      f.seed = U.randi(1, 1e6);
+      if (focused) Fx.shake(f.r >= 8 ? 7 : 3, f.r >= 8 ? 0.45 : 0.25);
+    } else if (f.type === 'fulton') Sfx.at(b, f.x, f.y, 'fulton');
+    else if (f.type === 'heli') Sfx.at(b, f.x, f.y, 'heli', { gain: 0.8 });
+    else if (f.type === 'crate') Sfx.at(b, f.x, f.y, 'smallboom', { gain: 0.4 });
+  },
+
+  // objective / phase changes worth a fanfare
+  watch(b) {
+    const n = b.objectives.filter(o => o.done).length;
+    if (b._doneN === undefined) b._doneN = n;
+    if (n > b._doneN && b.phase !== 'done') {
+      b._doneN = n;
+      Battle.ui(b, 'objective');
+      if (UI.focused === b.id && b.kind !== 'defend') Fx.banner('OBJECTIVE COMPLETE', b.phase === 'exfil' ? 'PROCEED TO THE LZ' : `${n}/${b.objectives.length}`, 'var(--ok)', { small: true, ttl: 1.8 });
+    }
+  },
 
   raiseAlert(b, x, y, by, defenders) {
     const first = b.alert < 2;
     b.alert = 2; b.alertT = 70; b.lastKnown = { x, y, t: b.time };
     if (!first) return;
     b.stats.alerts++;
+    Battle.ui(b, 'alert');
+    if (UI.focused === b.id) { Fx.banner('!  ALERT  !', defenders ? 'INTRUDERS SPOTTED' : 'YOU HAVE BEEN SPOTTED', 'var(--red)', { small: true, ttl: 1.6 }); Fx.shake(3, 0.25); }
     if (defenders) {
       Battle.say(b, 'Intruder spotted! Security converging.', 'bad');
       return;
@@ -789,7 +822,9 @@ const Battle = {
     p = U.clamp(p, 0.04, 0.96);
     const hit = Math.random() < p;
     const jx = hit ? 0 : U.rand(-3, 3), jy = hit ? 0 : U.rand(-3, 3);
-    b.fx.push({ type: 'tracer', x1: u.x, y1: u.y, x2: t.x + jx, y2: t.y + jy, t: 0, life: 0.12, nl: !w.lethal, side: u.side });
+    b.fx.push({ type: 'tracer', x1: u.x, y1: u.y, x2: t.x + jx, y2: t.y + jy, t: 0, life: 0.14, nl: !w.lethal, side: u.side });
+    b.fx.push({ type: 'flash', x: u.x, y: u.y, a: Math.atan2(t.y - u.y, t.x - u.x), t: 0, life: 0.07, nl: !w.lethal, snd: true });
+    Sfx.at(b, u.x, u.y, !w.lethal ? 'tranq' : w.noise <= 20 ? 'suppressed' : w.dmg >= 50 ? 'sniper' : w.rof > 4 ? 'mg' : 'gun', { gain: u.side === 'player' ? 0.8 : 0.6 });
     Battle.noise(b, u.x, u.y, w.noise, u.side);
     if (w.suppress) t.supp = 1.5;
     t.underFire = 2;
@@ -811,6 +846,7 @@ const Battle = {
       if (unaware && src) dmg *= 2.2;   // shots on unaware targets are lethal precision shots
       t.hp -= dmg;
       b.fx.push({ type: 'hit', x: t.x, y: t.y, t: 0, life: 0.25 });
+      if (t.side === 'player') { t.hitAt = performance.now(); if (UI.focused === b.id) Sfx.at(b, t.x, t.y, 'hit', { gain: 0.6 }); }
       if (t.hp <= 0) Battle.incapacitate(b, t, src);
     } else {
       if (t.kind === 'camera' || t.kind === 'uav') return;
@@ -825,10 +861,11 @@ const Battle = {
     t.hp = 0; t.path = null; t.act = null; t.order = null; t.moving = false;
     if (t.side === 'player' && t.kind === 'op') {
       t.state = 'down'; t.bleedT = RnD.has('trauma') ? 150 : 90;
+      Sfx.at(b, t.x, t.y, 'down');
       Battle.say(b, `${t.name} is down! Bleeding out.`, 'bad');
       if (UI.focused !== b.id) Game.notify('OPERATIVE DOWN', `${t.name} (${b.team}) is bleeding out at ${b.place}.`, 'bad', [{ label: 'Take Command', act: 'focusBattle', args: { id: b.id } }], { ttl: 8 });
     } else {
-      t.state = 'dead';
+      t.state = 'dead'; t.deadAt = b.time;
       if (t.kind === 'camera' || t.kind === 'uav') b.fx.push({ type: 'boom', x: t.x, y: t.y, r: 4, t: 0, life: 0.6 });
       if (src && src.side === 'player' && t.side === 'enemy' && t.kind !== 'camera' && t.kind !== 'uav') { src.kills++; b.stats.kills++; }
       if (t.target) Battle.say(b, `Target neutralized.`, 'ok');
@@ -837,7 +874,8 @@ const Battle = {
 
   sleep(b, t, src) {
     if (t.state !== 'ok') return;
-    t.state = 'asleep'; t.sleepT = t.side === 'player' ? U.rand(35, 55) : U.rand(80, 140); t.stun = 0;
+    t.state = 'asleep'; t.sleepT = t.side === 'player' ? U.rand(35, 55) : U.rand(80, 140); t.stun = 0; t.sleptAt = b.time;
+    Sfx.at(b, t.x, t.y, 'sleep', { gain: 0.6 });
     t.path = null; t.act = null; t.moving = false; t.found = false; t.gasT = 0;
     if (src && src.side === 'player' && t.side === 'enemy') { src.sleeps++; b.stats.sleeps++; }
     if (t.side === 'player') Battle.say(b, `${t.name} was knocked out.`, 'bad');
@@ -946,6 +984,7 @@ const Battle = {
     const delay = { supply: 3, smoke: 2, sleepgas: 2.5, strike: 6 }[key];
     b.strikes.push({ key, x, y, at: b.time + delay });
     b.fx.push({ type: 'incoming', x, y, r: ab.radius, t: 0, life: delay, key });
+    Battle.ui(b, 'radio');
     Battle.say(b, `${ab.name} inbound.`, 'info');
     return true;
   },
@@ -1126,6 +1165,11 @@ const Battle = {
     b.result = { success, fultoned, targetFulton: !!b.targetFulton, coreHacked: !!b.coreHacked };
     Battle.say(b, success ? 'MISSION COMPLETE' : 'MISSION FAILED', success ? 'ok' : 'bad');
     Contracts.onBattleEnd(b);
+    if (UI.focused === b.id) {
+      Sfx.play(success ? 'win' : 'fail');
+      Fx.result(success, b.result.grade, b.title);
+      setTimeout(() => { if (!UI.modalOpen() && (UI.focused === b.id || !UI.focused)) ACT.showReport({ id: b.id }); }, 3900);
+    } else Sfx.at(b, 0, 0, success ? 'win' : 'fail', { gain: 0.6 });
     Bus.emit('battleEnd', b);
   },
 

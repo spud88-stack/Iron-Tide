@@ -51,7 +51,7 @@ const Game = {
   log(msg, type = 'info') {
     G.log.unshift({ t: G.time, msg, type });
     if (G.log.length > 400) G.log.length = 400;
-    Bus.emit('log');
+    Bus.emit('log', G.log[0]);
   },
 
   notify(title, msg, type = 'info', actions = [], opts = {}) {

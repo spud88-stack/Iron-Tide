@@ -246,3 +246,99 @@ h3:first-child{margin-top:0}
   #topbar .brand .nm{display:none}
   .grid3{grid-template-columns:1fr 1fr}
 }
+
+/* ================= animations & effects ================= */
+#vignette{position:fixed;inset:0;pointer-events:none;z-index:800;opacity:0;transition:opacity .6s}
+#vignette.sneak{opacity:1;background:radial-gradient(ellipse at center,transparent 62%,rgba(30,120,180,.18) 100%)}
+#vignette.caution{opacity:1;background:radial-gradient(ellipse at center,transparent 58%,rgba(242,179,61,.22) 100%)}
+#vignette.alert{opacity:1;background:radial-gradient(ellipse at center,transparent 52%,rgba(255,40,30,.38) 100%);animation:vpulse 1.1s ease-in-out infinite}
+@keyframes vpulse{50%{opacity:.55}}
+#pausebadge{position:fixed;left:50%;top:92px;transform:translateX(-50%);z-index:860;font:700 15px var(--mono);letter-spacing:.3em;color:var(--acc);background:rgba(8,12,10,.85);border:1px solid var(--acc-d);padding:4px 14px;display:none;animation:blink 1.6s infinite}
+#pausebadge small{color:var(--dim);letter-spacing:.1em;margin-left:6px}
+body.paused #pausebadge{display:block}
+body.paused #map .leaflet-tile-pane{filter:saturate(.5) brightness(.85)}
+#map{transition:none}
+
+/* center banners */
+.cbanner{position:fixed;left:0;right:0;top:34%;z-index:1600;pointer-events:none;text-align:center;color:var(--c);animation:cbin .45s cubic-bezier(.2,1.4,.4,1)}
+.cbanner .cb-t{font:700 46px var(--font);letter-spacing:.35em;text-shadow:0 0 18px var(--c),0 2px 0 #000}
+.cbanner.small .cb-t{font-size:30px}
+.cbanner .cb-s{font:600 16px var(--font);letter-spacing:.25em;color:#ddd;margin-top:2px;text-shadow:0 1px 3px #000}
+.cbanner .cb-line{height:2px;margin:6px auto;width:0;background:linear-gradient(90deg,transparent,var(--c),transparent);animation:cbline .6s .1s forwards}
+.cbanner.out{animation:cbout .5s forwards}
+@keyframes cbin{from{transform:scale(1.6);opacity:0;letter-spacing:1em}to{transform:none;opacity:1}}
+@keyframes cbline{to{width:min(700px,80vw)}}
+@keyframes cbout{to{opacity:0;transform:translateY(-20px)}}
+
+.cresult{position:fixed;inset:0;z-index:1650;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,rgba(0,0,0,.65),transparent 70%);animation:fadein .3s}
+.cresult .cr-t{font:700 48px var(--font);letter-spacing:.3em;text-shadow:0 0 20px currentColor;animation:cbin .5s cubic-bezier(.2,1.4,.4,1)}
+.cresult .cr-s{font:600 16px var(--font);letter-spacing:.2em;color:#ccc;margin:4px 0 6px}
+.cresult .cr-g{font:700 120px var(--mono);line-height:1;text-shadow:0 0 30px currentColor;animation:stamp .5s .6s both cubic-bezier(.3,1.6,.5,1)}
+.cresult.out{animation:fadeout .6s forwards}
+@keyframes stamp{from{transform:scale(3) rotate(-14deg);opacity:0}to{transform:rotate(-6deg);opacity:1}}
+@keyframes fadein{from{opacity:0}} @keyframes fadeout{to{opacity:0}}
+
+/* uplink transition */
+.uplink{position:fixed;inset:0;z-index:1700;pointer-events:none;display:flex;align-items:center;justify-content:center;
+  background:repeating-linear-gradient(0deg,rgba(94,200,255,.06) 0 2px,transparent 2px 4px),rgba(2,8,12,.55);animation:fadein .15s}
+.uplink .ul-box{border:1px solid var(--blue);background:rgba(4,12,18,.9);padding:14px 28px;text-align:center;box-shadow:0 0 30px rgba(94,200,255,.35);animation:cbin .35s}
+.uplink .ul-t{font:700 18px var(--mono);letter-spacing:.3em;color:var(--blue)}
+.uplink .ul-s{font:600 15px var(--font);letter-spacing:.15em;margin:4px 0 8px}
+.uplink .ul-bar{height:3px;background:#0d2230;width:260px}
+.uplink .ul-bar i{display:block;height:100%;background:var(--blue);width:0;animation:ulbar 1.1s forwards}
+.uplink.out{animation:fadeout .45s forwards}
+@keyframes ulbar{to{width:100%}}
+.uplink::after{content:'';position:absolute;left:0;right:0;height:120px;background:linear-gradient(transparent,rgba(94,200,255,.18),transparent);animation:scan 1.2s linear}
+@keyframes scan{from{top:-120px}to{top:100%}}
+
+.floater{position:fixed;z-index:1550;pointer-events:none;font:700 16px var(--mono);text-shadow:0 0 6px #000,0 0 2px #000;animation:floatup 2.2s ease-out forwards}
+@keyframes floatup{0%{transform:translateY(10px) scale(.8);opacity:0}15%{transform:none;opacity:1}100%{transform:translateY(-40px);opacity:0}}
+.res.flash b{animation:resflash .8s}
+@keyframes resflash{0%{color:var(--ok);text-shadow:0 0 10px var(--ok)}}
+.res.flashbad b{animation:resflashbad .8s}
+@keyframes resflashbad{0%{color:var(--red);text-shadow:0 0 10px var(--red)}}
+
+/* markers */
+.mk-mb::before{content:'';position:absolute;left:50%;top:50%;width:90px;height:90px;margin:-45px;border-radius:50%;transform:rotate(-45deg);
+  background:conic-gradient(from 0deg,rgba(242,179,61,.35),transparent 25%);animation:radar 4s linear infinite;pointer-events:none}
+@keyframes radar{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+.mk-heli{position:relative}
+.mk-heli::after{content:'';position:absolute;left:50%;top:50%;width:22px;height:2px;margin:-1px -11px;background:rgba(200,240,255,.6);animation:rotor .12s linear infinite}
+@keyframes rotor{to{transform:rotate(360deg)}}
+.mk.pop{animation:popin .6s cubic-bezier(.2,1.6,.4,1)}
+@keyframes popin{0%{transform:scale(0)}100%{transform:scale(1)}}
+.ctring{position:absolute;left:-7px;top:-7px;width:36px;height:36px;border:2px solid #ffd36b;border-radius:50%;pointer-events:none;animation:pulse 1.2s 4 forwards}
+.mk-ct{transition:transform .15s}
+.mk-ct:hover{transform:scale(1.25)}
+
+/* UI polish */
+#panel-body>*{animation:fadeslide .22s ease-out}
+@keyframes fadeslide{from{opacity:0;transform:translateY(6px)}}
+.dept,.card,.rdi,.ct{transition:border-color .15s,transform .15s,box-shadow .15s}
+.dept:hover,.ct:hover,.rdi:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.bar>i{transition:width .5s ease-out}
+.bar.live>i{background-image:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);background-size:60px 100%;background-repeat:no-repeat;animation:shimmer 1.4s linear infinite}
+@keyframes shimmer{from{background-position:-60px 0}to{background-position:260px 0}}
+.toast{cursor:pointer}
+.toast.leave{animation:tout .3s forwards}
+@keyframes tout{to{transform:translateX(30px);opacity:0}}
+#sidenav .badge{animation:popin .4s}
+#sidenav .badge.warn{background:var(--acc);color:#111}
+.uc{transition:border-color .15s,transform .1s}
+.uc:hover{transform:translateY(-2px)}
+.uc.hit{animation:ucHit .35s}
+@keyframes ucHit{30%{box-shadow:0 0 0 2px var(--red) inset;background:rgba(255,60,50,.25)}}
+#battle-hud:not(.hidden) .bh-top,#battle-hud:not(.hidden) .bh-main{animation:hudin .35s ease-out}
+@keyframes hudin{from{transform:translateY(30px);opacity:0}}
+.alertb.a2{animation:blink .5s infinite}
+.mbtip{position:fixed;z-index:1200;pointer-events:none;background:rgba(6,9,8,.94);border:1px solid var(--line2);padding:4px 8px;font-size:12px;line-height:1.3}
+
+/* start screen boot */
+#start-bg{position:absolute;inset:0;pointer-events:none}
+.start{position:relative}
+.start{animation:cbin .6s cubic-bezier(.2,1.2,.4,1)}
+.start h1{animation:glow 3s ease-in-out infinite}
+@keyframes glow{50%{text-shadow:0 0 22px rgba(242,179,61,.6)}}
+.bootlog{font:12px var(--mono);color:var(--ok);min-height:72px;margin:8px 0 2px;white-space:pre-line;opacity:.85}
+.range{display:grid;grid-template-columns:110px 1fr 40px;gap:8px;align-items:center}
+.range input{width:100%;padding:0;accent-color:var(--acc)}

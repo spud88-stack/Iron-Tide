@@ -33,7 +33,7 @@ PANELS.base = {
         <div class="plats">${plats}</div>
         ${isDept ? `<div class="row dim" style="font-size:13px"><span>Staff ${Staff.count(k)}/${Staff.cap(k)}</span><span class="grow"></span><span>Lv cap ${Staff.levelCap(k)}</span></div>` : ''}
         <div class="note">${desc}</div>
-        ${bld ? `${bar(1 - bld.left / bld.total)}<div class="dim" style="font-size:12px">Building platform ${bld.n} — ${U.fmtDur(bld.left * 60 / Base.buildSpeed())}</div>`
+        ${bld ? `${bar(1 - bld.left / bld.total, 'live')}<div class="dim" style="font-size:12px">Building platform ${bld.n} — ${U.fmtDur(bld.left * 60 / Base.buildSpeed())}</div>`
           : cost ? `<div class="cost">${U.costStr(cost, G.res)} · ${cost.hours}h</div><button class="sm" data-act="build" data-k="${k}" ${why ? `disabled data-tip="${why}"` : ''}>Build platform ${n + 1}</button>` : '<div class="dim" style="font-size:12px">Fully expanded</div>'}
       </div>`;
     };
@@ -92,6 +92,10 @@ PANELS.staff = {
       if (st.tab === 'sick') return s.status === 'injured' || s.status === 'sick';
       return s.dept === st.tab;
     });
+    if (st.q) {
+      const q = st.q.toLowerCase();
+      list = list.filter(s => s.name.toLowerCase().includes(q) || s.callsign.toLowerCase().includes(q) || s.nat.toLowerCase().includes(q) || s.skills.some(k => SKILLS[k].name.toLowerCase().includes(q)));
+    }
     const key = st.sort;
     const val = s => key === 'best' ? Staff.bestVal(s) : key === 'name' ? s.name : key === 'morale' ? s.morale : s.stats[key];
     list.sort((a, b) => { const va = val(a), vb = val(b); return (va < vb ? -1 : va > vb ? 1 : 0) * st.dir; });
@@ -101,6 +105,7 @@ PANELS.staff = {
     // toolbar
     const nsel = [...st.sel].filter(id => Staff.byId(id)).length;
     html += `<div class="row wrap" style="margin:8px 0">
+      <input id="staff-q" data-inp="staffSearch" placeholder="Search name, callsign, skill…" value="${U.esc(st.q || '')}" style="width:190px">
       <button data-act="autoAssign" data-tip="Assign everyone (except ★ locked staff) to the department that fits them best.">Auto-assign</button>
       <span class="dim" style="margin-left:8px">${nsel} selected</span>
       <select data-chg="bulkAssign" ${nsel ? '' : 'disabled'}><option value="">Move selected to…</option>${DEPT_KEYS.map(d => `<option value="${d}">${DEPTS[d].name} (${Staff.count(d)}/${Staff.cap(d)})</option>`).join('')}<option value="waiting">Waiting Room</option><option value="dismiss">✕ Dismiss</option></select>
@@ -145,6 +150,10 @@ Object.assign(ACT, {
   staffDetail: (d, el, e) => { if (e.target.closest('[data-act="staffSel"]') && el.dataset.act !== 'staffSel') return; const st = UI.ps.staff; st.detail = +d.id || null; UI.renderPanel(+d.id ? true : false); },
   staffSel: (d, el, e) => { e.stopPropagation(); const st = UI.ps.staff; const id = +d.id; st.sel.has(id) ? st.sel.delete(id) : st.sel.add(id); UI.renderPanel(); },
   selNone: () => { UI.ps.staff.sel.clear(); UI.renderPanel(); },
+  staffSearch: (d, el) => {
+    UI.ps.staff.q = el.value; UI.renderPanel();
+    const i = document.getElementById('staff-q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
+  },
   autoAssign: () => { Staff.autoAssign(); Game.notify('AUTO-ASSIGN', 'Staff reassigned to their best departments.', 'ok'); UI.renderPanel(); },
   bulkAssign: (d, el) => {
     const v = el.value; if (!v) return;
@@ -172,10 +181,12 @@ PANELS.rnd = {
   title: 'RESEARCH & DEVELOPMENT', live: true,
   render(st) {
     st.cat = st.cat || 'Weapons';
-    const act = G.rnd.active.map(a => `<div class="rdi"><div><div class="nm">${RD[a.id].name}</div>${bar(1 - a.left / a.total, 'blue')}<div class="dim" style="font-size:12px">${U.fmtDur(a.left * 60 / RnD.speed())} remaining</div></div><div><button class="sm danger" data-act="rdCancel" data-id="${a.id}" data-tip="Refunds 50%">Cancel</button></div></div>`).join('');
+    const act = G.rnd.active.map(a => `<div class="rdi"><div><div class="nm">${RD[a.id].name}</div>${bar(1 - a.left / a.total, 'blue live')}<div class="dim" style="font-size:12px">${U.fmtDur(a.left * 60 / RnD.speed())} remaining</div></div><div><button class="sm danger" data-act="rdCancel" data-id="${a.id}" data-tip="Refunds 50%">Cancel</button></div></div>`).join('');
     const levels = DEPT_KEYS.map(d => `<span class="pill" style="color:${DEPTS[d].color}">${DEPTS[d].short} ${Staff.level(d)}</span>`).join(' ');
     let html = `<div class="row wrap" style="margin-bottom:8px">${levels}<span class="grow"></span><span class="dim">Teams ${G.rnd.active.length}/${RnD.slots()} · speed ×${RnD.speed().toFixed(2)}</span></div>`;
     if (act) html += `<h3>In Development</h3>${act}`;
+    const q = RnD.queue();
+    if (q.length) html += `<h3>Queue</h3>` + q.map((id, i) => `<div class="rdi"><div><div class="nm"><span class="dim mono">#${i + 1}</span> ${RD[id].name}</div><div class="cost">${U.costStr(RnD.cost(RD[id]), G.res)} · starts when a team is free${Base.canAfford(RnD.cost(RD[id])) ? '' : ' <span class="bad">(insufficient resources)</span>'}</div></div><div><button class="sm danger" data-act="rdDequeue" data-id="${id}">Remove</button></div></div>`).join('');
     const cnt = c => RD_ITEMS.filter(i => i.cat === c && RnD.state(i.id) === 'available').length;
     html += tabs(st.cat, RD_CATS.map(c => [c, c, cnt(c) || undefined]), 'rdCat');
     const items = RD_ITEMS.filter(i => i.cat === st.cat);
@@ -186,7 +197,10 @@ PANELS.rnd = {
       const miss = RnD.missing(it);
       const req = Object.entries(it.req || {}).map(([d, v]) => `<span class="${Staff.level(d) < v ? 'miss' : ''}">${DEPTS[d].short} ${v}</span>`).concat(it.pre ? [`<span class="${RnD.has(it.pre) ? '' : 'miss'}">${RD[it.pre].name}</span>`] : []).join(' · ');
       const why = RnD.canStart(it.id);
-      const right = s === 'done' ? '<span class="pill ok">DEVELOPED</span>' : s === 'active' ? '<span class="pill blue">IN PROGRESS</span>' :
+      const queued = q.includes(it.id);
+      const busy = s === 'available' && G.rnd.active.length >= RnD.slots();
+      const right = s === 'done' ? '<span class="pill ok">DEVELOPED</span>' : s === 'active' ? '<span class="pill blue">IN PROGRESS</span>' : queued ? `<span class="pill acc">QUEUED #${q.indexOf(it.id) + 1}</span>` :
+        busy ? `<button class="sm" data-act="rdQueue" data-id="${it.id}" data-tip="All teams busy — start automatically when one frees up">Queue</button>` :
         `<button class="sm ${s === 'available' && !why ? 'pri' : ''}" data-act="rdStart" data-id="${it.id}" ${why ? `disabled data-tip="${why}"` : ''}>Develop</button>`;
       return `<div class="rdi ${s}"><div><div class="nm">${it.name}</div><div class="note">${it.desc}</div>
         ${s !== 'done' && !it.start ? `<div class="req dim">Requires: ${req || '—'}</div><div class="cost">${U.costStr(RnD.cost(it), G.res)} · ${it.hours}h base</div>` : ''}</div><div>${right}</div></div>`;
@@ -197,7 +211,9 @@ PANELS.rnd = {
 Object.assign(ACT, {
   rdCat: d => { UI.ps.rnd.cat = d.k; UI.renderPanel(); },
   rdStart: d => { RnD.start(d.id); UI.renderPanel(); },
-  rdCancel: d => { RnD.cancel(d.id); UI.renderPanel(); },
+  rdCancel: d => { RnD.cancel(d.id); RnD.pump(); UI.renderPanel(); },
+  rdQueue: d => { RnD.enqueue(d.id); UI.renderPanel(); },
+  rdDequeue: d => { RnD.dequeue(d.id); UI.renderPanel(); },
 });
 
 // ===================== OPERATIONS =====================
@@ -333,11 +349,16 @@ PANELS.system = {
       ${t('autoAssignRecruits', 'Auto-place new volunteers into departments with free slots', 'New arrivals go straight to the department that suits them best, if there is room.')}
       ${t('satellite', 'Satellite imagery (M)', '')}
       </div>
+      <h3>Audio</h3><div class="col">
+      ${['master', 'sfx', 'music'].map(k => `<label class="range"><span>${{ master: 'Master', sfx: 'Effects', music: 'Music' }[k]}</span><input type="range" min="0" max="100" value="${Math.round(Sfx.cfg[k] * 100)}" data-inp="audioVol" data-k="${k}"><span class="mono" id="vol-${k}">${Math.round(Sfx.cfg[k] * 100)}</span></label>`).join('')}
+      <label class="row" style="cursor:pointer"><span class="selbox ${Sfx.cfg.muted ? 'on' : ''}" data-act="audioMute"></span><span data-act="audioMute">Mute all (N)</span></label>
+      <div class="note">All sound is synthesized live. The soundtrack adapts: calm at base, tense while sneaking, driving when a squad you're watching is on alert.</div></div>
       <h3>Controls</h3>${HELP_HTML}`;
   },
 };
 const HELP_HTML = `<table class="help">
-  <tr><td><kbd>Space</kbd></td><td>Pause / resume · <kbd>+</kbd>/<kbd>-</kbd> change speed</td></tr>
+  <tr><td><kbd>Space</kbd></td><td>Pause / resume · <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> or <kbd>+</kbd>/<kbd>-</kbd> set speed (outside battles)</td></tr>
+  <tr><td><kbd>N</kbd></td><td>Mute / unmute audio</td></tr>
   <tr><td><kbd>B</kbd> <kbd>T</kbd> <kbd>R</kbd> <kbd>O</kbd> <kbd>F</kbd> <kbd>L</kbd></td><td>Base · sTaff · R&amp;D · Ops · FOB · Log panels</td></tr>
   <tr><td><kbd>M</kbd></td><td>Toggle satellite imagery</td></tr>
   <tr><td>Zoom in on a battle</td><td>Opens the command HUD seamlessly — the squad AI keeps fighting until you give orders. Zoom out or <kbd>Esc</kbd> to leave; the battle carries on.</td></tr>
@@ -347,7 +368,8 @@ const HELP_HTML = `<table class="help">
   <tr><td><kbd>S</kbd> / <kbd>H</kbd> / <kbd>X</kbd></td><td>Toggle stealth/assault · Hold position · Recall to LZ</td></tr>
   <tr><td><kbd>Z</kbd> <kbd>C</kbd> <kbd>V</kbd> <kbd>G</kbd></td><td>Support: supply drop · smoke · sleep gas · precision strike (then click target)</td></tr>
   <tr><td><kbd>Q</kbd></td><td>Units you order go MANUAL — Q hands them back to the squad AI (leaving the battle does too)</td></tr>
-  <tr><td><kbd>Tab</kbd></td><td>Cycle and center on operatives</td></tr></table>`;
+  <tr><td><kbd>Tab</kbd> / <kbd>F</kbd></td><td>Cycle and center on operatives · toggle camera follow</td></tr>
+  <tr><td>Hover a unit</td><td>Shows health, weapon, status and what a right-click will do</td></tr></table>`;
 Object.assign(ACT, {
   setting: d => {
     G.settings[d.k] = !G.settings[d.k];
@@ -355,6 +377,8 @@ Object.assign(ACT, {
     UI.renderPanel();
   },
   saveGame: () => Game.save(),
+  audioVol: (d, el) => { Sfx.cfg[d.k] = el.value / 100; Sfx.applyVol(); Sfx.saveCfg(); const o = document.getElementById('vol-' + d.k); if (o) o.textContent = el.value; },
+  audioMute: () => { Sfx.toggleMute(); UI.renderPanel(); },
   loadGame: () => { if (Game.load()) { location.reload(); } else Game.notify('NO SAVE', 'No saved game found.', 'bad'); },
   newGameConfirm: () => { if (confirm('Abandon this Mother Base and start over? Your save will be overwritten.')) { Game.wipe(); window.__noSave = true; location.reload(); } },
 });

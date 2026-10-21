@@ -22,8 +22,9 @@ const Main = {
     const name = Main.ss.name ?? 'Outer Tide';
     const zone = Main.ss.zone ?? 'seychelles';
     const init = name.split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
-    el.innerHTML = `<div class="start">
+    el.innerHTML = `<canvas id="start-bg"></canvas><div class="start">
       <h1>IRON TIDE</h1><div class="sub">PRIVATE FORCES COMMAND</div>
+      <div class="bootlog" id="bootlog"></div>
       <div class="note">Build a sea-borne army without a nation. Recruit and manage staff, develop weapons, take contracts anywhere on Earth, raid rival Private Forces' FOBs — and drop into any fight to command it yourself.</div>
       <label>FORCE NAME</label><input id="ss-name" maxlength="28" value="${U.esc(name)}" data-inp="ssName">
       <label>MOTHER BASE LOCATION</label><select id="ss-zone" data-chg="ssZone">${ZONES.map(z => `<option value="${z.id}" ${z.id === zone ? 'selected' : ''}>${z.name}</option>`).join('')}</select>
@@ -33,6 +34,50 @@ const Main = {
     </div>`;
     el.classList.remove('gone');
     MapView.map.setView([ZONE[zone].lat, ZONE[zone].lng], 3);
+    Main.boot2();
+  },
+
+  // typed boot log + radar sweep behind the start screen
+  boot2() {
+    const lines = ['> SECURE UPLINK ........ OK', `> SATELLITE GRID ....... ${ZONES.length} ZONES`, '> OPEN CONTRACT FEED ... ONLINE', '> HOSTILE PRIVATE FORCES DETECTED', '> AWAITING COMMANDER_'];
+    const log = document.getElementById('bootlog');
+    if (Main.bootTimer) clearInterval(Main.bootTimer);
+    const NL = String.fromCharCode(10);
+    if (Main.booted) { log.textContent = lines.join(NL); }
+    else {
+      let li = 0, ci = 0;
+      Main.bootTimer = setInterval(() => {
+        const el = document.getElementById('bootlog'); if (!el || li >= lines.length) { clearInterval(Main.bootTimer); Main.booted = true; return; }
+        ci++;
+        if (ci > lines[li].length) { li++; ci = 0; }
+        el.textContent = lines.slice(0, li).join(NL) + (li < lines.length ? (li ? NL : '') + lines[li].slice(0, ci) : '');
+        if (ci % 2) Sfx.play('type');
+      }, 22);
+    }
+    const cv = document.getElementById('start-bg');
+    const ctx = cv.getContext('2d');
+    const blips = Array.from({ length: 18 }, () => ({ a: Math.random() * Math.PI * 2, r: U.rand(0.15, 0.95), red: Math.random() < 0.4 }));
+    const draw = t => {
+      if (!document.getElementById('start-bg') || document.getElementById('start-screen').classList.contains('gone')) return;
+      cv.width = innerWidth; cv.height = innerHeight;
+      const cx = cv.width / 2, cy = cv.height / 2, R = Math.hypot(cx, cy);
+      ctx.strokeStyle = 'rgba(242,179,61,.10)'; ctx.lineWidth = 1;
+      for (let i = 1; i <= 6; i++) { ctx.beginPath(); ctx.arc(cx, cy, R * i / 6, 0, Math.PI * 2); ctx.stroke(); }
+      ctx.beginPath(); ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy); ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R); ctx.stroke();
+      const sw = (t / 2600) % (Math.PI * 2) * 1;
+      const ang = (t / 1000 * 0.9) % (Math.PI * 2);
+      const g = ctx.createConicGradient ? ctx.createConicGradient(ang - 0.9, cx, cy) : null;
+      if (g) { g.addColorStop(0, 'rgba(242,179,61,0)'); g.addColorStop(0.14, 'rgba(242,179,61,.16)'); g.addColorStop(0.15, 'rgba(242,179,61,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, cv.width, cv.height); }
+      for (const b of blips) {
+        const d = ((ang - b.a) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+        const a = Math.max(0, 1 - d / 2.5);
+        if (a <= 0) continue;
+        ctx.fillStyle = b.red ? `rgba(255,90,78,${a})` : `rgba(120,220,150,${a})`;
+        ctx.beginPath(); ctx.arc(cx + Math.cos(b.a) * b.r * R * 0.7, cy + Math.sin(b.a) * b.r * R * 0.7, 3, 0, Math.PI * 2); ctx.fill();
+      }
+      requestAnimationFrame(draw);
+    };
+    requestAnimationFrame(draw);
   },
 
   start(isNew) {
@@ -79,6 +124,7 @@ Object.assign(ACT, {
   ssNew: () => {
     const name = (document.getElementById('ss-name').value || 'Outer Tide').trim();
     const zoneId = document.getElementById('ss-zone').value;
+    Sfx.play('uplink');
     Game.newGame({ name, zoneId, emblemSeed: Main.ss.seed });
     Main.start(true);
   },

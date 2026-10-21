@@ -11,6 +11,7 @@ const UI = {
       const fn = ACT[el.dataset.act];
       if (!fn) return;
       e.preventDefault();
+      if (el.tagName === 'BUTTON' && !['openPanel', 'closePanel'].includes(el.dataset.act)) Sfx.play('click');
       fn(el.dataset, el, e);
     });
     document.addEventListener('change', e => {
@@ -45,7 +46,8 @@ const UI = {
       tip.style.left = Math.min(window.innerWidth - w - 8, e.clientX + 14) + 'px';
       tip.style.top = Math.min(window.innerHeight - h - 8, e.clientY + 14) + 'px';
     });
-    Bus.on('log', () => UI.dirty());
+    Bus.on('log', e => { UI.dirty(); if (e && e.type === 'bad' && UI.panel !== 'log') UI.unread = (UI.unread || 0) + 1; });
+    Sfx.init();
     Bus.on('speed', () => UI.renderTop());
   },
 
@@ -53,6 +55,9 @@ const UI = {
 
   tick(now) {
     if (!G) return;
+    const dt = Math.min(0.1, (now - (UI.lastTick || now)) / 1000); UI.lastTick = now;
+    Fx.tick(dt);
+    Music.update();
     if (UI.tipEl && !UI.tipEl.isConnected) { UI.tipEl = null; document.getElementById('tooltip').classList.add('hidden'); }
     if (now - UI.lastTop > 250) { UI.lastTop = now; UI.renderTop(); }
     if (now - UI.lastStrip > 400) { UI.lastStrip = now; UI.renderStrip(); }
@@ -65,29 +70,75 @@ const UI = {
     HUD.tick(now);
   },
 
-  // ----- top bar -----
+  // ----- top bar (built once, then patched in place so tooltips & animations survive) -----
   renderTop() {
     const top = document.getElementById('topbar');
-    const sp = G.speedIdx;
-    const proc = k => Math.round(Base.processRate(k));
-    const res = RES_KEYS.map(k => {
-      const v = G.res[k];
-      const tip = k === 'gmp' ? `GMP — daily net ${U.fmt(Base.dailyBreakdown().net)}` : `${RES_NAME[k]}<br>Processed: ${U.fmt(v)}<br>Unprocessed: ${U.fmt(G.raw[k])}<br>Processing ${proc(k)}/h`;
-      return `<div class="res ${v < 0 ? 'neg' : ''} ${k !== 'gmp' && k !== 'fuel' ? 'opt' : ''}" data-tip="${tip}"><b>${U.fmtShort(v)}</b><i>${RES_LABEL[k]}</i></div>`;
-    }).join('');
-    const ninj = G.staff.filter(s => s.status === 'injured' || s.status === 'sick').length;
-    top.innerHTML = `
-      <div class="brand" data-act="openPanel" data-p="base" style="cursor:pointer"><img src="${Art.emblem(G.base.emblemSeed, PF.myInitials())}"><span class="nm">${U.esc(G.base.name)}</span></div>
-      <div class="clock">${U.fmtClock(G.time)}</div>
-      <div class="speed">${SPEEDS.map((s, i) => `<button class="${i === sp ? 'on' : ''}" data-act="speed" data-i="${i}" data-tip="${i === 0 ? 'Pause (Space)' : s + 'x speed'}">${i === 0 ? '❚❚' : '▶'.repeat(i)}</button>`).join('')}</div>
-      ${G.threats.length ? `<span class="pill red" data-tip="Incoming PF incursion">⚠ INCURSION ${U.fmtDur(Math.min(...G.threats.map(t => t.at)) - G.time)}</span>` : ''}
-      ${G.outbreak ? `<span class="pill red" data-tip="Disease outbreak — build Quarantine">☣ OUTBREAK</span>` : ''}
-      <div class="resbar">
-        ${res}
-        <div class="res" data-tip="Heroism — attracts better volunteers"><b>${U.fmtShort(G.heroism)}</b><i>HEROISM</i></div>
-        <div class="res" data-tip="League: ${PF.league(G.points)} · Rank #${PF.myRank()}"><b>${U.fmtShort(G.points)}</b><i>${PF.league(G.points).toUpperCase()}</i></div>
-        <div class="res" data-tip="Staff (injured/sick: ${ninj})"><b>${Staff.total()}</b><i>STAFF</i></div>
-      </div>`;
+    if (!UI.topBuilt || top.dataset.base !== G.base.name + G.base.emblemSeed) {
+      UI.topBuilt = true; top.dataset.base = G.base.name + G.base.emblemSeed;
+      top.innerHTML = `
+        <div class="brand" data-act="openPanel" data-p="base" style="cursor:pointer"><img src="${Art.emblem(G.base.emblemSeed, PF.myInitials())}"><span class="nm">${U.esc(G.base.name)}</span></div>
+        <div class="clock" id="tb-clock"></div>
+        <div class="speed">${SPEEDS.map((s, i) => `<button data-act="speed" data-i="${i}" data-tip="${i === 0 ? 'Pause (Space)' : s + 'x speed (' + i + ')'}">${i === 0 ? '❚❚' : '▶'.repeat(i)}</button>`).join('')}</div>
+        <span id="tb-warn"></span>
+        <div class="resbar">
+          ${RES_KEYS.map(k => `<div class="res ${k !== 'gmp' && k !== 'fuel' ? 'opt' : ''}" id="tb-${k}"><b></b><i>${RES_LABEL[k]}</i></div>`).join('')}
+          <div class="res" id="tb-hero" data-tip="Heroism — attracts better volunteers"><b></b><i>HEROISM</i></div>
+          <div class="res" id="tb-league"><b></b><i></i></div>
+          <div class="res" id="tb-staff"><b></b><i>STAFF</i></div>
+        </div>`;
+      UI.prevRes = { ...G.res };
+    }
+    const set = (el, prop, v) => { if (el && el[prop] !== v) el[prop] = v; };
+    set(document.getElementById('tb-clock'), 'innerHTML', U.fmtClock(G.time));
+    top.querySelectorAll('.speed button').forEach((b, i) => b.classList.toggle('on', i === G.speedIdx));
+    const warn = (G.threats.length ? `<span class="pill red" data-tip="Incoming PF incursion">⚠ INCURSION ${U.fmtDur(Math.min(...G.threats.map(t => t.at)) - G.time)}</span> ` : '') + (G.outbreak ? `<span class="pill red" data-tip="Disease outbreak — build Quarantine">☣ OUTBREAK</span>` : '');
+    set(document.getElementById('tb-warn'), 'innerHTML', warn);
+    const now = performance.now();
+    for (const k of RES_KEYS) {
+      const el = document.getElementById('tb-' + k), v = G.res[k];
+      const d = v - (UI.prevRes[k] ?? v);
+      if ((k === 'gmp' && Math.abs(d) >= 2000) || (k !== 'gmp' && Math.abs(d) >= 150)) {
+        const r = el.getBoundingClientRect();
+        if (r.width) Fx.float(`${d > 0 ? '+' : '−'}${U.fmtShort(Math.abs(d))} ${RES_LABEL[k]}`, d > 0 ? 'var(--ok)' : 'var(--red)', r.left - 10, r.bottom + 2);
+        el.dataset.flash = now + 900; el.dataset.fc = d > 0 ? 'ok' : 'bad';
+        if (k === 'gmp' && d >= 10000) Sfx.play('coin');
+      }
+      UI.prevRes[k] = v;
+      const flash = +(el.dataset.flash || 0) > now ? (el.dataset.fc === 'ok' ? ' flash' : ' flashbad') : '';
+      const cls = `res${v < 0 ? ' neg' : ''}${k !== 'gmp' && k !== 'fuel' ? ' opt' : ''}${flash}`;
+      if (el.className !== cls) el.className = cls;
+      set(el.querySelector('b'), 'textContent', U.fmtShort(Fx.tween(k, v, 0.1)));
+      el.dataset.tip = k === 'gmp' ? `GMP — daily net ${U.fmt(Base.dailyBreakdown().net)}` : `${RES_NAME[k]}<br>Processed: ${U.fmt(v)}<br>Unprocessed: ${U.fmt(G.raw[k])}<br>Processing ${Math.round(Base.processRate(k))}/h`;
+    }
+    set(document.querySelector('#tb-hero b'), 'textContent', U.fmtShort(Fx.tween('hero', G.heroism, 0.1)));
+    const lg = document.getElementById('tb-league');
+    set(lg.querySelector('b'), 'textContent', U.fmtShort(Fx.tween('pts', G.points, 0.1)));
+    set(lg.querySelector('i'), 'textContent', PF.league(G.points).toUpperCase());
+    lg.dataset.tip = `League: ${PF.league(G.points)} · Rank #${PF.myRank()}`;
+    const st = document.getElementById('tb-staff');
+    set(st.querySelector('b'), 'textContent', String(Staff.total()));
+    st.dataset.tip = `Staff (injured/sick: ${G.staff.filter(s => s.status === 'injured' || s.status === 'sick').length})`;
+  },
+
+  // sidenav badges: things that want your attention
+  renderBadges() {
+    const idleRnd = G.rnd.active.length < RnD.slots() && RD_ITEMS.some(i => !RnD.canStart(i.id));
+    const b = {
+      staff: Staff.count('waiting') ? [Staff.count('waiting'), 'warn', 'staff waiting for assignment'] : null,
+      rnd: idleRnd ? ['!', 'warn', 'R&D team idle — projects available'] : null,
+      ops: Contracts.open().length ? [Contracts.open().length, '', 'open contracts'] : null,
+      online: G.threats.length ? ['!', '', 'incursion incoming'] : null,
+      log: UI.unread ? [UI.unread > 9 ? '9+' : UI.unread, '', 'new alerts'] : null,
+    };
+    for (const [p, v] of Object.entries(b)) {
+      const btn = document.querySelector(`#sidenav button[data-p="${p}"]`); if (!btn) continue;
+      let el = btn.querySelector('.badge');
+      const key = v ? v.join('|') : '';
+      if (btn.dataset.badge === key) continue;
+      btn.dataset.badge = key;
+      if (el) el.remove();
+      if (v) { el = document.createElement('span'); el.className = 'badge ' + v[1]; el.textContent = v[0]; el.title = v[2]; btn.appendChild(el); }
+    }
   },
 
   renderStrip() {
@@ -107,7 +158,9 @@ const UI = {
       const p = PF.byId(t.pfId);
       chips.push(`<div class="opchip alert" data-act="openPanel" data-p="online"><span class="dot"></span><b>INCURSION</b> ${U.esc(p ? p.name : '?')} · ${U.fmtDur(t.at - G.time)}</div>`);
     }
-    el.innerHTML = chips.join('');
+    const html = chips.join('');
+    if (el._html !== html) { el.innerHTML = html; el._html = html; }
+    UI.renderBadges();
   },
 
   // ----- toasts -----
@@ -117,10 +170,12 @@ const UI = {
     t.className = 'toast ' + type;
     const acts = actions.map(a => `<button class="sm" data-act="${a.act}" ${Object.entries(a.args || {}).map(([k, v]) => `data-${k}="${U.esc(v)}"`).join(' ')}>${a.label}</button>`).join('');
     t.innerHTML = `<div class="tt">${U.esc(title)}</div><div>${U.esc(msg)}</div>${acts ? `<div class="acts">${acts}</div>` : ''}`;
-    t.addEventListener('click', e => { if (e.target.closest('button')) setTimeout(() => t.remove(), 50); });
+    const leave = () => { if (t.classList.contains('leave')) return; t.classList.add('leave'); setTimeout(() => t.remove(), 300); };
+    t.addEventListener('click', e => { setTimeout(leave, e.target.closest('button') ? 50 : 0); });
     box.prepend(t);
     while (box.children.length > 6) box.lastChild.remove();
-    setTimeout(() => { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 450); }, (opts.ttl || 6) * 1000);
+    setTimeout(leave, (opts.ttl || 6) * 1000);
+    if (!opts.silent) Sfx.play(opts.sound || (type === 'ok' ? 'ok' : type === 'bad' ? 'bad' : 'info'));
   },
 
   // ----- modal -----
@@ -146,11 +201,14 @@ const UI = {
     if (UI.panel === p) { UI.closePanel(); return; }
     UI.panel = p;
     UI.ps[p] = UI.ps[p] || {};
+    if (p === 'log') UI.unread = 0;
+    Sfx.play('open');
     document.getElementById('panel').classList.remove('hidden');
     document.querySelectorAll('#sidenav button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
     UI.renderPanel(true);
   },
   closePanel() {
+    if (UI.panel) Sfx.play('close');
     UI.panel = null;
     document.getElementById('panel').classList.add('hidden');
     document.querySelectorAll('#sidenav button').forEach(b => b.classList.remove('on'));
@@ -187,6 +245,7 @@ const UI = {
       setTimeout(() => { UI.flying = false; }, 4000);
     }
     if (G.speedIdx > 1) Game.setSpeed(1);
+    if (!opts.noFly || !opts.quiet) { Fx.uplink(`${b.team.toUpperCase()} — ${b.place.toUpperCase()}`); Sfx.play('uplink'); }
     HUD.show(b);
     UI.renderStrip();
   },
@@ -216,6 +275,8 @@ const UI = {
     if (k === '+' || k === '=') { Game.setSpeed(G.speedIdx + 1); return; }
     if (k === '-') { Game.setSpeed(G.speedIdx - 1); return; }
     if (k === 'm' || k === 'M') { ACT.layerToggle(); return; }
+    if (k === 'n' || k === 'N') { Sfx.toggleMute(); return; }
+    if (!UI.focused && /^[1-3]$/.test(k)) { Game.setSpeed(+k); return; }
     if (UI.focused && HUD.key(e)) return;
     const map = { b: 'base', t: 'staff', r: 'rnd', o: 'ops', f: 'online', l: 'log' };
     if (map[k.toLowerCase()] && !e.ctrlKey && !e.metaKey) UI.openPanel(map[k.toLowerCase()]);

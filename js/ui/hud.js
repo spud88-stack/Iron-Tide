@@ -15,6 +15,7 @@ const HUD = {
         <span class="alertb" id="bh-alert"></span><span class="mono" id="bh-time"></span><span id="bh-night" class="dim"></span>
         <span class="grow"></span>
         <button class="sm" data-act="bhRelease" id="bh-assist" data-tip="Units you give orders to switch to MANUAL. Release hands the selected units (or all) back to the squad AI (Q).">Release to AI</button>
+        <button class="sm" data-act="bhFollow" id="bh-follow" data-tip="Keep the camera on the selected operatives (F)">Follow</button>
         <button class="sm" data-act="bhReport" id="bh-report" style="display:none">Report</button>
         <button class="sm" data-act="bhLeave" data-tip="Hand control to the squad AI and zoom out (Esc). The battle continues.">Leave ⟶</button>
       </div>
@@ -28,12 +29,21 @@ const HUD = {
     HUD.update(true);
   },
 
-  hide() { HUD.b = null; const el = HUD.el(); el.classList.add('hidden'); el.innerHTML = ''; },
+  hide() { HUD.b = null; HUD.follow = false; const el = HUD.el(); el.classList.add('hidden'); el.innerHTML = ''; },
   refresh() { HUD.update(true); },
 
   tick(now) {
     if (!HUD.b) return;
     if (!G.battles.includes(HUD.b)) { UI.unfocus(); return; }
+    // camera follow keeps the selected squad centered
+    if (HUD.follow && now - (HUD.lastFollow || 0) > 250 && !BRender.drag) {
+      HUD.lastFollow = now;
+      const sel = [...BRender.sel].map(id => Battle.unit(HUD.b, id)).filter(u => u && ALIVE(u));
+      if (sel.length) {
+        const x = sel.reduce((s, u) => s + u.x, 0) / sel.length, y = sel.reduce((s, u) => s + u.y, 0) / sel.length;
+        MapView.map.panTo(U.m2ll(HUD.b.lat, HUD.b.lng, x, y), { animate: true, duration: 0.25, easeLinearity: 1 });
+      }
+    }
     if (now - HUD.last > 200) { HUD.last = now; HUD.update(); }
   },
 
@@ -60,6 +70,7 @@ const HUD = {
     as.disabled = !nMan;
     as.style.display = b.phase === 'done' ? 'none' : '';
     $('bh-report').style.display = b.phase === 'done' ? '' : 'none';
+    $('bh-follow').classList.toggle('on', !!HUD.follow);
 
     // objectives + feed
     const objs = b.objectives.map(o => {
@@ -87,8 +98,12 @@ const HUD = {
           <div class="bar ok" data-hp="${u.uid}"><i></i></div><div class="st" data-st="${u.uid}"></div></div>`;
       }).join('');
     }
+    const nowMs = performance.now();
     for (const u of ops) {
       const hp = unitsEl.querySelector(`[data-hp="${u.uid}"] i`); if (!hp) continue;
+      const card = hp.closest('.uc');
+      const hit = u.hitAt && nowMs - u.hitAt < 400;
+      if (hit && !card.classList.contains('hit')) { card.classList.add('hit'); setTimeout(() => card.classList.remove('hit'), 400); }
       const f = U.clamp(u.hp / u.maxHp, 0, 1);
       hp.style.width = f * 100 + '%';
       hp.style.background = f > .5 ? 'var(--ok)' : f > .25 ? 'var(--acc)' : 'var(--red)';
@@ -139,7 +154,7 @@ const HUD = {
       return true;
     }
     if (k === 'a' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); BRender.sel = new Set(ops.map(u => u.uid)); HUD.refresh(); return true; }
-    const map = { s: 'bhStance', h: 'bhHold', x: 'bhRecall', q: 'bhRelease' };
+    const map = { s: 'bhStance', h: 'bhHold', x: 'bhRecall', q: 'bhRelease', f: 'bhFollow' };
     if (map[k]) { ACT[map[k]]({}); return true; }
     const sup = { z: 'supply', c: 'smoke', v: 'sleepgas', g: 'strike' }[k];
     if (sup) { ACT.bhSupport({ k: sup }); return true; }
@@ -150,6 +165,7 @@ const HUD = {
 
 Object.assign(ACT, {
   bhLeave: () => UI.unfocus(true),
+  bhFollow: () => { HUD.follow = !HUD.follow; Game.notify(HUD.follow ? 'CAMERA FOLLOW ON' : 'CAMERA FOLLOW OFF', 'Press F to toggle.', 'info', [], { ttl: 2 }); HUD.refresh(); },
   bhRelease: () => {
     const b = HUD.b; if (!b) return;
     let ids = [...BRender.sel].filter(id => { const u = Battle.unit(b, id); return u && u.manual; });

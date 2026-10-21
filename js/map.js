@@ -6,6 +6,7 @@ const MapView = {
   heli: new Map(), routes: new Map(), battleMk: new Map(),
   pendingRefresh: false,
   sites: new Map(),
+  seen: new Set(), seenInit: false,
 
   init() {
     const map = L.map('map', { zoomControl: false, worldCopyJump: true, minZoom: 2, maxZoom: 19, boxZoom: false, zoomSnap: 0.25, wheelPxPerZoomLevel: 90, attributionControl: true });
@@ -78,10 +79,14 @@ const MapView = {
     // contracts
     for (const c of G.contracts) {
       if (c.status !== 'open') continue;
-      const m = L.marker([c.lat, c.lng], { icon: MapView.icon('mk-ct' + (c.diff >= 7 ? ' hot' : ''), c.diff, 22) }).addTo(g);
+      const fresh = MapView.seenInit && !MapView.seen.has(c.id);
+      MapView.seen.add(c.id);
+      const icon = L.divIcon({ className: '', html: `<div class="mk mk-ct${c.diff >= 7 ? ' hot' : ''}${fresh ? ' pop' : ''}">${c.diff}</div>${fresh ? '<div class="ctring"></div>' : ''}`, iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -11] });
+      const m = L.marker([c.lat, c.lng], { icon }).addTo(g);
       m.bindTooltip(`<b>${U.esc(c.title)}</b><br>${U.esc(c.city)}, ${U.esc(c.country)} · ${CONTRACT_TYPES[c.type].name}`, { className: 'tt', direction: 'top', offset: [0, -12] });
       m.bindPopup(() => UI.popupContract(c.id), { maxWidth: 340 });
     }
+    MapView.seenInit = true;
     // battles
     const bg = MapView.groups.battles; bg.clearLayers(); MapView.battleMk.clear();
     for (const b of G.battles) {

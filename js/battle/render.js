@@ -44,6 +44,7 @@ const BRender = {
     const ctx = BRender.ctx;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, cv.width, cv.height);
+    BRender.hoverTip();
     if (BRender.zooming) return;
     const map = MapView.map;
     if (map.getZoom() < 14) return;
@@ -64,6 +65,25 @@ const BRender = {
       ctx.fillStyle = 'rgba(242,179,61,.08)'; ctx.fillRect(d.x0, d.y0, d.x1 - d.x0, d.y1 - d.y0);
       ctx.setLineDash([]);
     }
+  },
+
+  // small info card for the unit under the cursor
+  hoverTip() {
+    let tip = document.getElementById('mbtip');
+    if (!tip) { tip = document.createElement('div'); tip.id = 'mbtip'; tip.className = 'mbtip hidden'; document.body.appendChild(tip); }
+    const b = BRender.focusedBattle();
+    let u = null;
+    if (b && BRender.hover && b.phase !== 'loading') u = BRender.unitAt(b, BRender.xf(b), BRender.hover[0], BRender.hover[1]);
+    BRender.hoverUnit = u;
+    if (!u) { tip.classList.add('hidden'); return; }
+    const w = WEAPONS[u.weapon];
+    const st = u.state === 'ok' ? (u.side === 'enemy' && u.ai ? ({ patrol: 'patrolling', guard: 'on guard', investigate: 'suspicious', search: 'searching', combat: 'IN COMBAT', intrude: 'infiltrating', device: 'active' }[u.ai.mode] || 'active') : u.act ? u.act.type : u.moving ? 'moving' : 'holding') : u.state;
+    const hint = BRender.sel.size ? (Battle.fultonable(b, Battle.unit(b, [...BRender.sel][0]) || u, u) ? '<br><span class="acc">Right-click: Fulton</span>' : u.side === 'enemy' && u.state === 'ok' ? '<br><span class="bad">Right-click: attack</span>' : u.side === 'player' && (u.state === 'down' || u.state === 'asleep') ? '<br><span class="ok">Right-click: revive</span>' : '') : '';
+    tip.innerHTML = `<b style="color:${u.side === 'player' ? 'var(--blue)' : u.side === 'neutral' ? '#ffd36b' : 'var(--red)'}">${U.esc(u.name)}</b>${u.lvl && u.kind !== 'camera' && u.kind !== 'uav' ? ' ' + Staff.gradeHtml(u.lvl) : ''}
+      <br>HP ${Math.max(0, Math.round(u.hp))}/${u.maxHp}${w ? ' · ' + w.name : ''}<br><span class="dim">${st}${u.state === 'down' ? ' — bleeding ' + Math.ceil(u.bleedT) + 's' : u.state === 'asleep' ? ' — ' + Math.ceil(u.sleepT) + 's' : ''}</span>${hint}`;
+    tip.classList.remove('hidden');
+    tip.style.left = (BRender.hoverAt[0] + 16) + 'px';
+    tip.style.top = (BRender.hoverAt[1] + 12) + 'px';
   },
 
   poly(ctx, T, pts) {
@@ -122,8 +142,9 @@ const BRender = {
     if (b.lz) {
       const [px, py] = BRender.toScreen(T, b.lz.x, b.lz.y);
       ctx.strokeStyle = (b.phase === 'exfil' || b.abort) ? '#78dc96' : 'rgba(120,220,150,.55)';
-      ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
-      ctx.beginPath(); ctx.arc(px, py, b.lz.r * ppm, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.lineDashOffset = -performance.now() / 60;
+      ctx.beginPath(); ctx.arc(px, py, b.lz.r * ppm, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
+      if (b.phase === 'exfil' || b.abort) { const p = (performance.now() / 1200) % 1; ctx.strokeStyle = `rgba(120,220,150,${1 - p})`; ctx.beginPath(); ctx.arc(px, py, b.lz.r * ppm * (1 + p * 0.6), 0, Math.PI * 2); ctx.stroke(); }
       BRender.label(ctx, 'LZ', px, py - b.lz.r * ppm - 6, '#78dc96');
     }
     // mines
@@ -153,8 +174,18 @@ const BRender = {
       if (!o.done || o.type === 'defend') BRender.label(ctx, o.type === 'defend' ? 'CORE' : o.label.toUpperCase(), px, py - 16, col);
     }
     // smoke & gas
-    for (const s of b.smokes) { const [px, py] = BRender.toScreen(T, s.x, s.y); const a = Math.min(1, s.t / 4); ctx.fillStyle = `rgba(190,195,200,${0.55 * a})`; ctx.beginPath(); ctx.arc(px, py, s.r * ppm, 0, Math.PI * 2); ctx.fill(); }
-    for (const s of b.gas) { const [px, py] = BRender.toScreen(T, s.x, s.y); const a = Math.min(1, s.t / 4); ctx.fillStyle = `rgba(200,120,255,${0.35 * a})`; ctx.beginPath(); ctx.arc(px, py, s.r * ppm, 0, Math.PI * 2); ctx.fill(); }
+    const now = performance.now() / 1000;
+    const cloud = (s, col, alpha) => {
+      const [px, py] = BRender.toScreen(T, s.x, s.y);
+      const a = Math.min(1, s.t / 4, (s.life - s.t) / 1.5 + 0.3);
+      for (let i = 0; i < 5; i++) {
+        const ang = i * 1.26 + now * 0.25 + s.x, d = s.r * ppm * 0.35;
+        ctx.fillStyle = `rgba(${col},${alpha * a * 0.45})`;
+        ctx.beginPath(); ctx.arc(px + Math.cos(ang) * d, py + Math.sin(ang) * d, s.r * ppm * (0.65 + 0.08 * Math.sin(now + i)), 0, Math.PI * 2); ctx.fill();
+      }
+    };
+    for (const s of b.smokes) cloud(s, '190,195,200', 0.8);
+    for (const s of b.gas) cloud(s, '200,120,255', 0.6);
     // vision cones of known hostiles
     const showEnemy = u => u.side !== 'enemy' || u.vis || u.marked || b.phase === 'done';
     for (const u of b.units) {
@@ -207,7 +238,7 @@ const BRender = {
     }
     // header label when zoomed further out
     if (ppm < 1.2) BRender.label(ctx, `${b.title.toUpperCase()} — ${b.place}`, (ax + bx) / 2, ay - 8, '#f2b33d');
-    if (b.phase === 'done') {
+    if (b.phase === 'done' && !focused) {
       ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(ax, ay, bx - ax, by - ay);
       const ok = b.result && b.result.success;
       BRender.label(ctx, ok ? 'MISSION COMPLETE' : 'MISSION FAILED', (ax + bx) / 2, (ay + by) / 2, ok ? '#78dc96' : '#ff5a4e', 26);
@@ -236,8 +267,12 @@ const BRender = {
       if (alive && u.side === 'player') { ctx.strokeStyle = 'rgba(94,200,255,.25)'; ctx.beginPath(); ctx.arc(px, py, u.vision * T.sx, 0, Math.PI * 2); ctx.stroke(); }
       ctx.globalAlpha = 1; return;
     }
-    if (sel) { ctx.strokeStyle = '#f2b33d'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(px, py, R + 4, 0, Math.PI * 2); ctx.stroke(); }
+    if (sel) { ctx.strokeStyle = '#f2b33d'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.lineDashOffset = performance.now() / 40; ctx.beginPath(); ctx.arc(px, py, R + 4, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0; }
+    if (u === BRender.hoverUnit) { ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(px, py, R + 7, 0, Math.PI * 2); ctx.stroke(); }
     if (u.state === 'dead') {
+      const k = u.deadAt !== undefined ? U.clamp((b.time - u.deadAt) / 0.5, 0, 1) : 1;
+      if (k < 1) { ctx.globalAlpha = 1 - k; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(px, py, R * (1 + k), 0, Math.PI * 2); ctx.fill(); }
+      ctx.globalAlpha = 0.4 + 0.6 * k;
       ctx.strokeStyle = u.side === 'player' ? '#5ec8ff' : '#7a3a36'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(px - R * .7, py - R * .7); ctx.lineTo(px + R * .7, py + R * .7); ctx.moveTo(px + R * .7, py - R * .7); ctx.lineTo(px - R * .7, py + R * .7); ctx.stroke();
       ctx.globalAlpha = 1; return;
@@ -265,9 +300,9 @@ const BRender = {
       if (u.stun > 0 && u.state === 'ok') { ctx.fillStyle = '#b58cff'; ctx.fillRect(px - w / 2, py - R - 4, w * Math.min(1, u.stun / u.maxStun), 2); }
     }
     // state glyphs
-    if (u.state === 'asleep') BRender.label(ctx, 'Zz', px + R + 4, py - R, '#c9c9ff', 11);
+    if (u.state === 'asleep') { const bob = Math.sin(performance.now() / 400 + u.uid) * 3; BRender.label(ctx, 'z', px + R + 3, py - R + bob, '#c9c9ff', 9); BRender.label(ctx, 'Z', px + R + 9, py - R - 7 + bob, '#c9c9ff', 12); }
     if (u.state === 'down') BRender.label(ctx, `✚ ${Math.ceil(u.bleedT)}s`, px, py + R + 10, '#ff9a3c', 11);
-    if (u.icon) BRender.label(ctx, u.icon, px, py - R - 12, u.icon === '!' ? '#ff5a4e' : '#f2b33d', 16);
+    if (u.icon) { const k = U.clamp(2.5 - u.iconT, 0, 0.3) / 0.3; BRender.label(ctx, u.icon, px, py - R - 12 - (1 - k) * 6, u.icon === '!' ? '#ff5a4e' : '#f2b33d', Math.round(16 * (1 + (1 - k) * 1.2))); }
     if (u.act) {
       const f = Math.min(1, u.act.t / u.act.total);
       ctx.strokeStyle = '#f2b33d'; ctx.lineWidth = 3;
@@ -283,18 +318,52 @@ const BRender = {
     const a = 1 - f.t / f.life;
     if (f.type === 'tracer') {
       const [x1, y1] = BRender.toScreen(T, f.x1, f.y1), [x2, y2] = BRender.toScreen(T, f.x2, f.y2);
-      ctx.strokeStyle = f.nl ? `rgba(181,140,255,${a})` : f.side === 'player' ? `rgba(160,230,255,${a})` : `rgba(255,200,120,${a})`;
-      ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      // a short bright slug travelling along the line, over a faint glow trail
+      const p = Math.min(1, f.t / f.life * 1.6), q = Math.max(0, p - 0.35);
+      const col = f.nl ? '181,140,255' : f.side === 'player' ? '160,230,255' : '255,200,120';
+      ctx.strokeStyle = `rgba(${col},${a * 0.25})`; ctx.lineWidth = 3.5;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.strokeStyle = `rgba(${col},${0.6 + a * 0.4})`; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(x1 + (x2 - x1) * q, y1 + (y2 - y1) * q); ctx.lineTo(x1 + (x2 - x1) * p, y1 + (y2 - y1) * p); ctx.stroke();
+    } else if (f.type === 'flash') {
+      const [x, y] = BRender.toScreen(T, f.x, f.y);
+      ctx.save(); ctx.translate(x, y); ctx.rotate(-f.a);
+      ctx.fillStyle = f.nl ? `rgba(200,170,255,${a})` : `rgba(255,230,140,${a})`;
+      ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(14, -3); ctx.lineTo(11, 0); ctx.lineTo(14, 3); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.arc(5, 0, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
     } else if (f.type === 'hit' || f.type === 'dart') {
       const [x, y] = BRender.toScreen(T, f.x, f.y);
-      ctx.fillStyle = f.type === 'hit' ? `rgba(255,80,60,${a})` : `rgba(181,140,255,${a})`;
-      ctx.beginPath(); ctx.arc(x, y, 3 + (1 - a) * 4, 0, Math.PI * 2); ctx.fill();
+      const col = f.type === 'hit' ? '255,90,60' : '181,140,255';
+      ctx.strokeStyle = `rgba(${col},${a})`; ctx.lineWidth = 1.5;
+      for (let i = 0; i < 5; i++) { const ang = i * 1.256 + f.x; const r0 = 2 + (1 - a) * 4, r1 = r0 + 4; ctx.beginPath(); ctx.moveTo(x + Math.cos(ang) * r0, y + Math.sin(ang) * r0); ctx.lineTo(x + Math.cos(ang) * r1, y + Math.sin(ang) * r1); ctx.stroke(); }
     } else if (f.type === 'boom') {
       const [x, y] = BRender.toScreen(T, f.x, f.y);
-      const r = f.r * ppm * (0.4 + (1 - a) * 0.8);
-      ctx.fillStyle = f.nl ? `rgba(181,140,255,${a * 0.6})` : `rgba(255,150,50,${a * 0.7})`;
-      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = `rgba(255,240,200,${a})`; ctx.lineWidth = 2; ctx.stroke();
+      const p = f.t / f.life;
+      const r = f.r * ppm * (0.4 + p * 0.9);
+      const g = ctx.createRadialGradient(x, y, 0, x, y, Math.max(1, r));
+      if (f.nl) { g.addColorStop(0, `rgba(230,210,255,${a})`); g.addColorStop(1, 'rgba(181,140,255,0)'); }
+      else { g.addColorStop(0, `rgba(255,250,220,${a})`); g.addColorStop(0.35, `rgba(255,160,40,${a * 0.9})`); g.addColorStop(1, 'rgba(200,40,10,0)'); }
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, Math.max(1, r), 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = `rgba(255,240,210,${a * 0.8})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, f.r * ppm * (0.3 + p * 2.2), 0, Math.PI * 2); ctx.stroke();
+      if (!f.nl) {
+        const rr = U.mulberry32(f.seed || 1);
+        ctx.fillStyle = `rgba(255,200,90,${a})`;
+        for (let i = 0; i < 14; i++) { const ang = rr() * Math.PI * 2, sp = f.r * ppm * (0.8 + rr() * 1.6); ctx.fillRect(x + Math.cos(ang) * sp * p - 1, y + Math.sin(ang) * sp * p + p * p * 18 - 1, 2.5, 2.5); }
+      }
+    } else if (f.type === 'puff') {
+      const [x, y] = BRender.toScreen(T, f.x, f.y);
+      const p = f.t / f.life;
+      ctx.fillStyle = `rgba(70,70,70,${0.45 * (1 - p)})`;
+      ctx.beginPath(); ctx.arc(x + p * 10, y - p * 14, f.r * ppm * (0.6 + p * 1.2), 0, Math.PI * 2); ctx.fill();
+    } else if (f.type === 'ping') {
+      const [x, y] = BRender.toScreen(T, f.x, f.y);
+      const p = f.t / f.life;
+      ctx.strokeStyle = f.col.replace('A', a); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, 4 + p * 18, 0, Math.PI * 2); ctx.stroke();
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 4; i++) { const ang = i * Math.PI / 2 + Math.PI / 4, r0 = 14 - p * 8; ctx.beginPath(); ctx.moveTo(x + Math.cos(ang) * r0, y + Math.sin(ang) * r0); ctx.lineTo(x + Math.cos(ang) * (r0 - 5), y + Math.sin(ang) * (r0 - 5)); ctx.stroke(); }
     } else if (f.type === 'fulton') {
       const [x, y] = BRender.toScreen(T, f.x, f.y);
       const p = f.t / f.life;
@@ -372,7 +441,8 @@ const BRender = {
       };
       window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
     }, true);
-    el.addEventListener('mousemove', e => { BRender.hover = pt(e); });
+    el.addEventListener('mousemove', e => { BRender.hover = pt(e); BRender.hoverAt = [e.clientX, e.clientY]; });
+    el.addEventListener('mouseleave', () => { BRender.hover = null; });
 
     map.on('click', e => {
       const b = BRender.focusedBattle(); if (!b || b.phase === 'loading' || b.phase === 'done') return;
@@ -388,7 +458,7 @@ const BRender = {
       if (!BRender.inArea(b, T, px, py)) return;
       const u = BRender.unitAt(b, T, px, py, u => u.side === 'player' && (u.kind === 'op' || u.kind === 'sentry'));
       if (!e.originalEvent.shiftKey && !e.originalEvent.ctrlKey) BRender.sel.clear();
-      if (u) { if (BRender.sel.has(u.uid) && (e.originalEvent.ctrlKey)) BRender.sel.delete(u.uid); else BRender.sel.add(u.uid); }
+      if (u) { if (BRender.sel.has(u.uid) && (e.originalEvent.ctrlKey)) BRender.sel.delete(u.uid); else BRender.sel.add(u.uid); Sfx.play('select'); }
       HUD.refresh();
     });
 
@@ -426,7 +496,9 @@ const BRender = {
       if (rest.length) Battle.order(b, rest, { type: 'move', x, y });
     } else if (ord) Battle.order(b, ids, ord);
     else Battle.order(b, ids, { type: 'move', x, y });
-    b.fx.push({ type: 'hit', x, y, t: 0, life: 0.35 });
+    const col = ord && ord.type === 'attack' ? 'rgba(255,90,78,A)' : ord ? 'rgba(242,179,61,A)' : 'rgba(94,200,255,A)';
+    b.fx.push({ type: 'ping', x, y, t: 0, life: 0.5, col, snd: true });
+    Sfx.play('ack');
     HUD.refresh();
   },
 };

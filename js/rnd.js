@@ -53,6 +53,26 @@ const RnD = {
     UI.dirty();
   },
 
+  queue() { return G.rnd.queue || (G.rnd.queue = []); },
+  enqueue(id) {
+    const q = RnD.queue();
+    if (q.includes(id) || RnD.state(id) !== 'available') return;
+    q.push(id);
+    Game.log(`Queued for development: ${RD[id].name}.`, 'info');
+    UI.dirty();
+  },
+  dequeue(id) { const q = RnD.queue(); const i = q.indexOf(id); if (i >= 0) q.splice(i, 1); UI.dirty(); },
+  // start queued projects when a team frees up
+  pump() {
+    const q = RnD.queue();
+    for (const id of [...q]) {
+      if (G.rnd.active.length >= RnD.slots()) break;
+      const st = RnD.state(id);
+      if (st === 'done' || st === 'active') { q.splice(q.indexOf(id), 1); continue; }
+      if (!RnD.canStart(id)) { q.splice(q.indexOf(id), 1); RnD.start(id); }
+    }
+  },
+
   speed() {
     const sci = Staff.inDept('rnd').filter(s => Staff.has(s, 'scientist')).length;
     return 1 + Staff.level('rnd') / 70 + Math.min(0.5, sci * 0.1);
@@ -67,9 +87,10 @@ const RnD = {
         G.rnd.done[a.id] = 1;
         const it = RD[a.id];
         Game.log(`Development complete: ${it.name}.`, 'ok');
-        Game.notify('DEVELOPMENT COMPLETE', it.name, 'ok');
+        Game.notify('DEVELOPMENT COMPLETE', it.name, 'ok', [], { sound: 'chime' });
       }
     }
+    RnD.pump();
   },
 
   // derived gear values

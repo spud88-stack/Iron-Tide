@@ -24,17 +24,22 @@ Then open http://localhost:8080. There is no build step and no dependencies — 
 
 **FOBs & rival PFs** — 14 randomly generated Private Forces with emblems, leaders, tiers, leagues and their own FOBs and defenses. Scout them with Intel, infiltrate to hack their core and steal resources and staff, and defend your own FOBs (and Mother Base) when their hostility boils over: assign security staff, research cameras, UAVs and mines, and fight off intruders who Fulton your sleeping staff.
 
+**Sound & feel** — every sound is synthesized live with the Web Audio API (no audio files): positional gunfire that differs by weapon (rifles, suppressed, tranq darts, MG, sniper), explosions, Fulton balloons, helicopters, radio chatter, an "you've been spotted" alert sting and UI feedback. The generative soundtrack adapts to what you're watching — ambient at base, a tense pulse while sneaking, drums and bass when the squad is on alert. Visual effects include muzzle flashes, travelling tracers, explosions with debris, shockwaves and lingering smoke, screen shake, an alert vignette, an "uplink" transition into battles, animated mission-result stamps, floating resource gains and a radar boot screen.
+
+**Quality of life** — sidenav badges (waiting staff, idle R&D, contracts, incursions, unread alerts), an R&D queue, staff search, hover cards for units in battle, camera follow, auto-opening mission reports, click-to-dismiss toasts and volume controls in SYS.
+
 ## Controls
 
 | Key | Action |
 | --- | --- |
-| `Space`, `+` / `-` | Pause, change speed |
+| `Space`, `1`–`3`, `+` / `-` | Pause, set / change speed |
+| `N` | Mute audio |
 | `B` `T` `R` `O` `F` `L` | Base, sTaff, R&D, Ops, FOB, Log panels |
 | `M` | Satellite imagery |
 | Left click / `Shift`+drag | Select operatives / box select |
 | Right click | Move · attack enemy · Fulton sleeper or hostage · revive ally · interact with objective |
 | `1`–`9`, `Ctrl`+`A`, `Tab` | Select operative, select all, cycle & center |
-| `S` / `H` / `X` / `Q` | Stance, hold, recall to LZ, release to AI |
+| `S` / `H` / `X` / `Q` / `F` | Stance, hold, recall to LZ, release to AI, camera follow |
 | `Z` `C` `V` `G` | Supply drop, smoke, sleep gas, strike |
 | `Esc` | Cancel / close / leave battle |
 
